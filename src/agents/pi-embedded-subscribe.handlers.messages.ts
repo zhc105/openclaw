@@ -273,8 +273,12 @@ export function handleMessageEnd(
     rawThinking: extractAssistantThinking(assistantMessage),
   });
 
+  // Clear memoriaBlocks before processing the complete message text.
+  // Streaming deltas may have accumulated partial/fragmented blocks;
+  // re-extracting from the full rawText gives us clean, complete blocks.
+  ctx.state.memoriaBlocks.length = 0;
   const text = resolveSilentReplyFallbackText({
-    text: ctx.stripBlockTags(rawText, { thinking: false, final: false }),
+    text: ctx.stripBlockTags(rawText, { thinking: false, final: false, memoria: false }),
     messagingToolSentTexts: ctx.state.messagingToolSentTexts,
   });
   const rawThinking =
@@ -431,6 +435,7 @@ export function handleMessageEnd(
   ctx.blockChunker?.reset();
   ctx.state.blockState.thinking = false;
   ctx.state.blockState.final = false;
+  ctx.state.blockState.memoria = false;
   ctx.state.blockState.inlineCode = createInlineCodeState();
   ctx.state.lastStreamedAssistant = undefined;
   ctx.state.lastStreamedAssistantCleaned = undefined;

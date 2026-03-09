@@ -405,6 +405,8 @@ export type PluginHookAgentEndEvent = {
   success: boolean;
   error?: string;
   durationMs?: number;
+  /** Memory blocks extracted from `<memoria>` tags in the assistant's output. */
+  memoriaBlocks?: string[];
 };
 
 // Compaction hooks

@@ -1201,6 +1201,7 @@ export async function runEmbeddedAttempt(
         getLastToolError,
         getUsageTotals,
         getCompactionCount,
+        getMemoriaBlocks,
       } = subscription;
 
       const queueHandle: EmbeddedPiQueueHandle = {
@@ -1526,6 +1527,7 @@ export async function runEmbeddedAttempt(
         // This is fire-and-forget, so we don't await
         // Run even on compaction timeout so plugins can log/cleanup
         if (hookRunner?.hasHooks("agent_end")) {
+          const collectedMemoriaBlocks = getMemoriaBlocks();
           hookRunner
             .runAgentEnd(
               {
@@ -1533,6 +1535,9 @@ export async function runEmbeddedAttempt(
                 success: !aborted && !promptError,
                 error: promptError ? describeUnknownError(promptError) : undefined,
                 durationMs: Date.now() - promptStartedAt,
+                ...(collectedMemoriaBlocks.length > 0
+                  ? { memoriaBlocks: collectedMemoriaBlocks }
+                  : {}),
               },
               {
                 agentId: hookAgentId,

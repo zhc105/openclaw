@@ -23,6 +23,7 @@ import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
 const FINAL_TAG_SCAN_RE = /<\s*(\/?)\s*final\s*>/gi;
+const MEMORIA_TAG_SCAN_RE = /<\s*(\/?)\s*memoria\s*>/gi;
 const log = createSubsystemLogger("agent/embedded");
 
 export type {
@@ -49,8 +50,18 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     deltaBuffer: "",
     blockBuffer: "",
     // Track if a streamed chunk opened a <think> block (stateful across chunks).
-    blockState: { thinking: false, final: false, inlineCode: createInlineCodeState() },
-    partialBlockState: { thinking: false, final: false, inlineCode: createInlineCodeState() },
+    blockState: {
+      thinking: false,
+      final: false,
+      memoria: false,
+      inlineCode: createInlineCodeState(),
+    },
+    partialBlockState: {
+      thinking: false,
+      final: false,
+      memoria: false,
+      inlineCode: createInlineCodeState(),
+    },
     lastStreamedAssistant: undefined,
     lastStreamedAssistantCleaned: undefined,
     emittedAssistantUpdate: false,
@@ -78,6 +89,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     pendingMessagingTargets: new Map(),
     successfulCronAdds: 0,
     pendingMessagingMediaUrls: new Map(),
+    memoriaBlocks: [],
   };
   const usageTotals = {
     input: 0,
@@ -92,6 +104,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
   const toolMetas = state.toolMetas;
   const toolMetaById = state.toolMetaById;
   const toolSummaryById = state.toolSummaryById;
+  const memoriaBlocks = state.memoriaBlocks;
   const messagingToolSentTexts = state.messagingToolSentTexts;
   const messagingToolSentTextsNormalized = state.messagingToolSentTextsNormalized;
   const messagingToolSentTargets = state.messagingToolSentTargets;
@@ -109,9 +122,11 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     partialReplyDirectiveAccumulator.reset();
     state.blockState.thinking = false;
     state.blockState.final = false;
+    state.blockState.memoria = false;
     state.blockState.inlineCode = createInlineCodeState();
     state.partialBlockState.thinking = false;
     state.partialBlockState.final = false;
+    state.partialBlockState.memoria = false;
     state.partialBlockState.inlineCode = createInlineCodeState();
     state.lastStreamedAssistant = undefined;
     state.lastStreamedAssistantCleaned = undefined;
@@ -354,7 +369,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
 
   const stripBlockTags = (
     text: string,
-    state: { thinking: boolean; final: boolean; inlineCode?: InlineCodeState },
+    state: { thinking: boolean; final: boolean; memoria?: boolean; inlineCode?: InlineCodeState },
   ): string => {
     if (!text) {
       return text;
@@ -384,6 +399,48 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       processed += text.slice(lastIndex);
     }
     state.thinking = inThinking;
+
+    // 1b. Handle <memoria> blocks (stateful, strip content inside — like thinking).
+    // Extracted content is collected into the top-level subscribe state.memoriaBlocks
+    // (accessed via closure) for plugin consumption via agent_end.
+    {
+      const memoriaCodeSpans = buildCodeSpanIndex(processed, inlineStateStart);
+      let memoriaProcessed = "";
+      MEMORIA_TAG_SCAN_RE.lastIndex = 0;
+      let memoriaLastIndex = 0;
+      let inMemoria = state.memoria ?? false;
+      for (const match of processed.matchAll(MEMORIA_TAG_SCAN_RE)) {
+        const idx = match.index ?? 0;
+        if (memoriaCodeSpans.isInside(idx)) {
+          continue;
+        }
+        const isClose = match[1] === "/";
+        if (!inMemoria && !isClose) {
+          memoriaProcessed += processed.slice(memoriaLastIndex, idx);
+          inMemoria = true;
+        } else if (inMemoria && isClose) {
+          const content = processed.slice(memoriaLastIndex, idx).trim();
+          if (content) {
+            // Push to the top-level subscribe state (closure over `state` from subscribeEmbeddedPiSession).
+            // Deduplicate: streaming chunks may re-extract the same block multiple times.
+            if (!memoriaBlocks.includes(content)) {
+              memoriaBlocks.push(content);
+            }
+          }
+          inMemoria = false;
+        } else if (!inMemoria) {
+          memoriaProcessed += processed.slice(memoriaLastIndex, idx);
+        }
+        memoriaLastIndex = idx + match[0].length;
+      }
+      if (!inMemoria) {
+        memoriaProcessed += processed.slice(memoriaLastIndex);
+      }
+      if (state.memoria !== undefined) {
+        state.memoria = inMemoria;
+      }
+      processed = memoriaProcessed;
+    }
 
     // 2. Handle <final> blocks (stateful, strip content OUTSIDE)
     // If enforcement is disabled, we still strip the tags themselves to prevent
@@ -668,6 +725,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     unsubscribe,
     isCompacting: () => state.compactionInFlight || state.pendingCompactionRetry > 0,
     isCompactionInFlight: () => state.compactionInFlight,
+    getMemoriaBlocks: () => memoriaBlocks.slice(),
     getMessagingToolSentTexts: () => messagingToolSentTexts.slice(),
     getMessagingToolSentMediaUrls: () => messagingToolSentMediaUrls.slice(),
     getMessagingToolSentTargets: () => messagingToolSentTargets.slice(),

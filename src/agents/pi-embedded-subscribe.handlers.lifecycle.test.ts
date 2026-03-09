@@ -24,6 +24,7 @@ function createContext(
       blockState: {
         thinking: true,
         final: true,
+        memoria: false,
         inlineCode: createInlineCodeState(),
       },
     },
