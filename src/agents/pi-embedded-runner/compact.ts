@@ -944,6 +944,12 @@ export async function compactEmbeddedPiSession(
           force: params.trigger === "manual",
           runtimeContext: params as Record<string, unknown>,
         });
+        // If the context engine didn't compact and doesn't own compaction,
+        // fall through to Pi's built-in compaction.
+        if (!result.compacted && !contextEngine.info?.ownsCompaction) {
+          await contextEngine.dispose?.();
+          return compactEmbeddedPiSessionDirect(params);
+        }
         return {
           ok: result.ok,
           compacted: result.compacted,
