@@ -1429,6 +1429,7 @@ export async function runEmbeddedAttempt(
               sessionId: params.sessionId,
               messages: activeSession.messages,
               tokenBudget: params.contextTokenBudget,
+              prompt: params.prompt,
             });
             if (assembled.messages !== activeSession.messages) {
               activeSession.agent.replaceMessages(assembled.messages);
