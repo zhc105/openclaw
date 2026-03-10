@@ -658,7 +658,8 @@ export function buildAfterTurnRuntimeContext(params: {
   >;
   workspaceDir: string;
   agentDir: string;
-}): Partial<CompactEmbeddedPiSessionParams> {
+  memoriaBlocks?: string[];
+}): Partial<CompactEmbeddedPiSessionParams> & { memoriaBlocks?: string[] } {
   return {
     sessionKey: params.attempt.sessionKey,
     messageChannel: params.attempt.messageChannel,
@@ -677,6 +678,7 @@ export function buildAfterTurnRuntimeContext(params: {
     bashElevated: params.attempt.bashElevated,
     extraSystemPrompt: params.attempt.extraSystemPrompt,
     ownerNumbers: params.attempt.ownerNumbers,
+    memoriaBlocks: params.memoriaBlocks,
   };
 }
 
@@ -1907,6 +1909,7 @@ export async function runEmbeddedAttempt(
             attempt: params,
             workspaceDir: effectiveWorkspace,
             agentDir,
+            memoriaBlocks: subscription.getMemoriaBlocks(),
           });
 
           if (typeof params.contextEngine.afterTurn === "function") {
