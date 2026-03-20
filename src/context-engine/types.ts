@@ -121,8 +121,12 @@ export interface ContextEngine {
    */
   assemble(params: {
     sessionId: string;
+    /** Stable session key (e.g. "agent:main:main", "agent:ops:main"). Used to distinguish main session from subagents. */
+    sessionKey?: string;
     messages: AgentMessage[];
     tokenBudget?: number;
+    /** Current user prompt (not yet in messages). Used for semantic retrieval. */
+    prompt?: string;
   }): Promise<AssembleResult>;
 
   /**
